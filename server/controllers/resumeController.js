@@ -9,6 +9,13 @@ const AI = new OpenAI({
     baseURL: 'https://api.groq.com/openai/v1',
 });
 
+const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+
+function getUserId(req) {
+    const authData = getAuth(req);
+    return authData?.userId || (typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId);
+}
+
 /** Maximum recent chat messages to include in context */
 const MAX_CHAT_HISTORY = 10;
 
@@ -18,7 +25,10 @@ const MAX_CHAT_HISTORY = 10;
  */
 export const listResumes = async (req, res) => {
     try {
-        const { userId } = getAuth(req);
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Unauthorized: User ID not found' });
+        }
 
         const resumes = await sql`
             SELECT id, filename, ingestion_status, created_at, updated_at
@@ -40,7 +50,10 @@ export const listResumes = async (req, res) => {
  */
 export const getResume = async (req, res) => {
     try {
-        const { userId } = getAuth(req);
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Unauthorized: User ID not found' });
+        }
         const { resumeId } = req.params;
 
         if (!resumeId) {
@@ -70,7 +83,10 @@ export const getResume = async (req, res) => {
  */
 export const getChatHistory = async (req, res) => {
     try {
-        const { userId } = getAuth(req);
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Unauthorized: User ID not found' });
+        }
         const { resumeId } = req.params;
 
         if (!resumeId) {
@@ -143,7 +159,10 @@ ${context || '=== RELEVANT RESUME SECTIONS ===\nNone. No relevant resume section
  */
 export const sendChatMessage = async (req, res) => {
     try {
-        const { userId } = getAuth(req);
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: 'Unauthorized: User ID not found' });
+        }
         const { resumeId } = req.params;
         const { message } = req.body;
 
@@ -234,7 +253,7 @@ export const sendChatMessage = async (req, res) => {
 
         // Call Groq LLM with temperature 0.2 for strict grounding
         const response = await AI.chat.completions.create({
-            model: 'openai/gpt-oss-120b',
+            model: GROQ_MODEL,
             messages: chatMessages,
             temperature: 0.2,
             max_tokens: 1000,

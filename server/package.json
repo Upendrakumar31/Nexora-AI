@@ -7,7 +7,7 @@
   "scripts": {
     "server": "nodemon server.js",
     "start": "node server.js",
-    "test": "node --test tests/resumeRag.test.js tests/redisFallback.test.js",
+    "test": "node --test tests/resumeRag.test.js tests/redisFallback.test.js tests/securityAndValidation.test.js",
     "migrate": "node scripts/migrate.js"
   },
   "keywords": [],

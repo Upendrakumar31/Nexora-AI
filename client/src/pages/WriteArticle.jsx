@@ -27,9 +27,7 @@ const WriteArticle = () => {
       setLoading(true);
       const prompt = `Write an article about ${input} in ${selectedLength.text}.`;
       
-      // We are fetching the token and logging it before sending the request
       const token = await getToken();
-      console.log("🚨 [FRONTEND] Clerk Token:", token);
       
       const { data } = await axios.post('/api/ai/generate-article', 
         { prompt, length: selectedLength.length },

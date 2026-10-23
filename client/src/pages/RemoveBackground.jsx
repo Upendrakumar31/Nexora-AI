@@ -16,7 +16,6 @@ const RemoveBackground = () => {
 
     const onSubmitHandler = async (e) => {
         e.preventDefault();
-        console.log("🚨 [FRONTEND] Form submitted. File selected:", input);
         
         // Manual check replaces the HTML5 'required' attribute
         if (!input) {
@@ -32,9 +31,8 @@ const RemoveBackground = () => {
             formData.append('image', input); 
 
             const token = await getToken();
-            console.log("🚨 [FRONTEND] Clerk Token retrieved. Sending to backend...");
             
-            // Call your backend removeImageBackground controller
+            // Call backend removeImageBackground controller
             const { data } = await axios.post('/api/ai/remove-image-background', 
                 formData,
                 { 
@@ -44,8 +42,6 @@ const RemoveBackground = () => {
                     }
                 } 
             );
-        
-            console.log("🚨 [FRONTEND] Backend Response:", data);
 
             if (data.success) {
                 // The backend returns the secure_url from Cloudinary

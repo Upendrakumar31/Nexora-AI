@@ -13,9 +13,20 @@ const AI = new OpenAI({
     baseURL: "https://api.groq.com/openai/v1",
 });
 
+const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+
+function getUserId(req) {
+    const authData = getAuth(req);
+    return authData?.userId || (typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId);
+}
+
 export const generateArticle = async (req, res) => {
     try {
-        const { userId } = getAuth(req);
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized: User ID not found" });
+        }
+
         const { prompt, length } = req.body;
         const plan = req.plan;
         const free_usage = req.free_usage;
@@ -28,7 +39,7 @@ export const generateArticle = async (req, res) => {
         }
 
         const response = await AI.chat.completions.create({
-            model: "openai/gpt-oss-120b",
+            model: GROQ_MODEL,
             messages: [{ role: "user", content: prompt }],
             temperature: 0.7,
             max_tokens: parseInt(length) || 500,
@@ -69,7 +80,11 @@ export const generateArticle = async (req, res) => {
 
 export const generateBlogTitle = async (req, res) => {
     try {
-        const { userId } = getAuth(req);
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized: User ID not found" });
+        }
+
         const { prompt } = req.body;
         const plan = req.plan;
         const free_usage = req.free_usage;
@@ -82,7 +97,7 @@ export const generateBlogTitle = async (req, res) => {
         }
 
         const response = await AI.chat.completions.create({
-            model: "openai/gpt-oss-120b",
+            model: GROQ_MODEL,
             messages: [{ role: "user", content: prompt }],
             temperature: 0.7,
             max_tokens: 100,
@@ -123,7 +138,11 @@ export const generateBlogTitle = async (req, res) => {
 
 export const generateImage = async (req, res) => {
     try {
-        const { userId } = getAuth(req);
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized: User ID not found" });
+        }
+
         const { prompt, publish } = req.body;
         const plan = req.plan;
 
@@ -215,11 +234,18 @@ export const generateImage = async (req, res) => {
 
 export const removeImageBackground = async (req, res) => {
     try {
-        const { userId } = getAuth(req);
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized: User ID not found" });
+        }
+
         const image = req.file;
         const plan = req.plan;
 
         if (plan !== "premium") {
+            if (image?.path && fs.existsSync(image.path)) {
+                fs.unlinkSync(image.path);
+            }
             return res.json({
                 success: false,
                 message: "This feature is only available for premium subscriptions",
@@ -242,6 +268,10 @@ export const removeImageBackground = async (req, res) => {
             ],
         });
 
+        if (image.path && fs.existsSync(image.path)) {
+            fs.unlinkSync(image.path);
+        }
+
         await sql`
             INSERT INTO creations (user_id, prompt, content, type)
             VALUES (${userId}, 'Remove background from image', ${secure_url}, 'image')
@@ -249,6 +279,9 @@ export const removeImageBackground = async (req, res) => {
 
         res.json({ success: true, content: secure_url });
     } catch (error) {
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
         console.error("Background Removal Error:", error.message);
 
         res.status(500).json({
@@ -260,12 +293,20 @@ export const removeImageBackground = async (req, res) => {
 
 export const removeImageObject = async (req, res) => {
     try {
-        const { userId } = getAuth(req);
-        const { object } = req.body;
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized: User ID not found" });
+        }
+
+        // Fix field mismatch: accept 'object' from updated frontend or 'prompt' from legacy client
+        const object = req.body.object || req.body.prompt;
         const image = req.file;
         const plan = req.plan;
 
         if (plan !== "premium") {
+            if (image?.path && fs.existsSync(image.path)) {
+                fs.unlinkSync(image.path);
+            }
             return res.json({
                 success: false,
                 message: "This feature is only available for premium subscriptions",
@@ -279,14 +320,29 @@ export const removeImageObject = async (req, res) => {
             });
         }
 
+        if (!object || !String(object).trim()) {
+            if (image.path && fs.existsSync(image.path)) {
+                fs.unlinkSync(image.path);
+            }
+            return res.status(400).json({
+                success: false,
+                message: "Please describe the object you want to remove.",
+            });
+        }
+
         const { public_id } = await cloudinary.uploader.upload(image.path);
 
+        if (image.path && fs.existsSync(image.path)) {
+            fs.unlinkSync(image.path);
+        }
+
+        const cleanObject = String(object).trim();
         const imageUrl = cloudinary.url(public_id, {
-            transformation: [{ effect: `gen_remove:${object}` }],
+            transformation: [{ effect: `gen_remove:${cleanObject}` }],
             resource_type: "image",
         });
 
-        const promptMessage = `Remove ${object} from image`;
+        const promptMessage = `Remove ${cleanObject} from image`;
 
         await sql`
             INSERT INTO creations (user_id, prompt, content, type)
@@ -295,6 +351,9 @@ export const removeImageObject = async (req, res) => {
 
         res.json({ success: true, content: imageUrl });
     } catch (error) {
+        if (req.file?.path && fs.existsSync(req.file.path)) {
+            fs.unlinkSync(req.file.path);
+        }
         console.error("Object Removal Error:", error.message);
 
         res.status(500).json({
@@ -308,7 +367,10 @@ export const resumeReview = async (req, res) => {
     let parser = null;
 
     try {
-        const { userId } = getAuth(req);
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized: User ID not found" });
+        }
         const resume = req.file;
         const plan = req.plan;
 
@@ -380,7 +442,7 @@ ${extractedText}`;
         for (let attempt = 0; attempt < 2; attempt++) {
             try {
                 const response = await AI.chat.completions.create({
-                    model: "openai/gpt-oss-120b",
+                    model: GROQ_MODEL,
                     messages: [{ role: "user", content: structuredPrompt }],
                     temperature: attempt === 0 ? 0.5 : 0.3,
                     max_tokens: 1500,

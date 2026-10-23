@@ -1,40 +1,58 @@
 import sql from "../configs/db.js";
+import { getAuth } from "@clerk/express";
+
+function getUserId(req) {
+    const authData = getAuth(req);
+    return authData?.userId || (typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId);
+}
 
 export const getUserCreations = async (req, res) => {
     try {
-        const { userId } = req.auth();
-        const creations = await sql`SELECT * FROM creations WHERE user_id = ${userId} ORDER BY created_at DESC`;
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized: User ID not found" });
+        }
 
+        const creations = await sql`SELECT * FROM creations WHERE user_id = ${userId} ORDER BY created_at DESC`;
         res.json({ success: true, creations });
 
     } catch (error) {
-        res.json({ success: false, message: error.message });
+        console.error("getUserCreations error:", error.message);
+        res.status(500).json({ success: false, message: error.message });
     }
-}
+};
 
 export const getPublishedCreations = async (req, res) => {
     try {
         const creations = await sql`SELECT * FROM creations WHERE publish = true ORDER BY created_at DESC`;
-
         res.json({ success: true, creations });
 
     } catch (error) {
-        res.json({ success: false, message: error.message });
+        console.error("getPublishedCreations error:", error.message);
+        res.status(500).json({ success: false, message: error.message });
     }
-}
+};
 
 export const toggleLikeCreation = async (req, res) => {
     try {
-        const { userId } = req.auth();
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized: User ID not found" });
+        }
+
         const { id } = req.body;
+        if (!id) {
+            return res.status(400).json({ success: false, message: "Creation ID is required" });
+        }
+
         const [creation] = await sql`SELECT * FROM creations WHERE id = ${id}`;
         
         if (!creation) {
-            return res.json({ success: false, message: "creation not found" });
+            return res.status(404).json({ success: false, message: "Creation not found" });
         }
 
-        const currentLikes = creation.likes || [];
-        const userIdStr = userId.toString();
+        const currentLikes = Array.isArray(creation.likes) ? creation.likes : [];
+        const userIdStr = String(userId);
         let updatedLikes;
         let message;
 
@@ -46,14 +64,14 @@ export const toggleLikeCreation = async (req, res) => {
             message = 'Creation Liked';
         }
 
-        const formattedArray = `{${updatedLikes.join(',')}}`;
+        const formattedArray = `{${updatedLikes.map(uid => `"${String(uid).replace(/"/g, '')}"`).join(',')}}`;
 
-        await sql`UPDATE creations SET likes = ${formattedArray}::text[] WHERE id = ${id}`;
+        await sql`UPDATE creations SET likes = ${formattedArray}::text[], updated_at = NOW() WHERE id = ${id}`;
 
-        // FIX: Return the updatedLikes array here so the frontend can read it!
         res.json({ success: true, message, likes: updatedLikes });
 
     } catch (error) {
-        res.json({ success: false, message: error.message });
+        console.error("toggleLikeCreation error:", error.message);
+        res.status(500).json({ success: false, message: error.message });
     }
-}
+};

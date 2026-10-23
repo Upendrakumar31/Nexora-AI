@@ -33,10 +33,11 @@ const RemoveObject = () => {
         try {
             setLoading(true);
             
-            // Use FormData to package the file AND the text prompt together
+            // Use FormData to package the file and object description
             const formData = new FormData();
             formData.append('image', input); 
-            formData.append('prompt', object); // Sending the object name to the backend
+            formData.append('object', object);
+            formData.append('prompt', object); // Backward compatibility fallback
 
             const token = await getToken();
             
