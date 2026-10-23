@@ -209,8 +209,10 @@ describe('reviewToMarkdown', () => {
     });
 });
 
-// Ensure mock DATABASE_URL is set so db.js can be imported safely in offline/test environments
-process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://mock:mock@localhost:5432/mock';
+// Ensure mock environment variables are set so db.js and controllers can be imported safely in offline/test environments
+process.env.DATABASE_URL = process.env.DATABASE_URL || 'postgresql://mock:mock@ep-mock.neon.tech/mock';
+process.env.GROQ_API_KEY = process.env.GROQ_API_KEY || 'mock_groq_key';
+process.env.GEMINI_API_KEY = process.env.GEMINI_API_KEY || 'mock_gemini_key';
 
 // --- Test: Context Building & Grounding ---
 import {
@@ -489,7 +491,7 @@ describe('embeddingService', () => {
     });
 
     it('generates 768-dimensional embedding using gemini-embedding-001 when API key is provided', async (t) => {
-        if (!process.env.GEMINI_API_KEY) {
+        if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'mock_gemini_key') {
             t.skip('GEMINI_API_KEY is not set in process.env, skipping live embedding test');
             return;
         }
@@ -501,7 +503,7 @@ describe('embeddingService', () => {
     });
 
     it('generates batch embeddings where every chunk has 768 dimensions', async (t) => {
-        if (!process.env.GEMINI_API_KEY) {
+        if (!process.env.GEMINI_API_KEY || process.env.GEMINI_API_KEY === 'mock_gemini_key') {
             t.skip('GEMINI_API_KEY is not set in process.env, skipping live embedding test');
             return;
         }
