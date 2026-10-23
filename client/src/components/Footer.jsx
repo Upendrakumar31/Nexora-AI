@@ -8,10 +8,10 @@ const Footer = () => {
       <div className="flex flex-col md:flex-row justify-between w-full gap-10 border-b border-gray-500/30 pb-6">
         
         <div className="md:max-w-96">
-          <img className="h-9" src={assets.logo} alt="logo" />
+          <img className="h-9" src={assets.logo} alt="Nexora AI" />
           
           <p className="mt-6 text-sm leading-relaxed">
-            Experience the power of AI with QuickAi. <br />
+            Experience the power of AI with Nexora AI. <br />
             Transform your content creation with our suite of premium AI tools. Write articles, generate images, and enhance your workflow.
           </p>
         </div>
@@ -47,7 +47,7 @@ const Footer = () => {
       </div>
 
       <p className="py-6 text-center text-sm">
-        Copyright 2026 © SRX. All Right Reserved.
+        Copyright 2026 © Nexora AI. All Rights Reserved.
       </p>
       
     </footer>

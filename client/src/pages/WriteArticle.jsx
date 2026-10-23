@@ -1,11 +1,9 @@
 import { Edit, Sparkles } from 'lucide-react'
 import React, { useState } from 'react'
-import axios from 'axios'
+import api from '../services/api'
 import { useAuth } from '@clerk/react'
 import toast from 'react-hot-toast';
 import Markdown from 'react-markdown';
-
-axios.defaults.baseURL = import.meta.env.VITE_BASE_URL;
 
 const WriteArticle = () => {
   const articleLength = [
@@ -27,11 +25,8 @@ const WriteArticle = () => {
       setLoading(true);
       const prompt = `Write an article about ${input} in ${selectedLength.text}.`;
       
-      const token = await getToken();
-      
-      const { data } = await axios.post('/api/ai/generate-article', 
-        { prompt, length: selectedLength.length },
-        { headers: { Authorization: `Bearer ${token}` }} 
+      const { data } = await api.post('/api/ai/generate-article', 
+        { prompt, length: selectedLength.length }
       );
     
       if (data.success) {

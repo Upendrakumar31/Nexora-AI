@@ -17,7 +17,7 @@ const Layout = () => {
       <nav className='flex items-center justify-between w-full p-4 border-b h-16'>
         <img 
           src={assets.logo} 
-          alt="logo" 
+          alt="Nexora AI" 
           className='w-32 sm:w-44 cursor-pointer'
           onClick={() => navigate('/')} 
         />

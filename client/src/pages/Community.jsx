@@ -1,10 +1,8 @@
 import { useAuth, useUser } from '@clerk/react'
 import React, { useEffect, useState } from 'react'
 import { Heart, Loader2 } from 'lucide-react'
-import axios from 'axios'
+import api from '../services/api'
 import toast from 'react-hot-toast'
-
-axios.defaults.baseURL = import.meta.env.VITE_BASE_URL;
 
 const Community = () => {
   const [creations, setCreations] = useState([]);
@@ -15,11 +13,7 @@ const Community = () => {
   const fetchCreations = async () => {
     try {
       setLoading(true);
-      const token = await getToken();
-      
-      const { data } = await axios.get('/api/user/get-published-creations', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const { data } = await api.get('/api/user/get-published-creations');
 
       if (data.success) {
         setCreations(data.creations);
@@ -37,12 +31,7 @@ const Community = () => {
     if (!user) return;
 
     try {
-      const token = await getToken();
-      
-      const { data } = await axios.post('/api/user/toggle-like-creation', 
-        { id },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
+      const { data } = await api.post('/api/user/toggle-like-creation', { id });
 
       if (data.success) {
         const updatedLikes = data.likes || [];

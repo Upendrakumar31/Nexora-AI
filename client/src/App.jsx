@@ -1,6 +1,8 @@
-import React from 'react'
+import React, { useEffect } from 'react'
 import { Route, Routes } from 'react-router-dom'
 import { Toaster } from 'react-hot-toast'
+import { useAuth } from '@clerk/react'
+import { setTokenGetter } from './services/api'
 
 // ----------------------------------------------------------------------
 // Page Components
@@ -16,14 +18,18 @@ import RemoveObject from './pages/RemoveObject'
 import ReviewResume from './pages/ReviewResume'
 import Community from './pages/Community'
 
-
-
+const AuthTokenSync = () => {
+  const { getToken } = useAuth()
+  useEffect(() => {
+    setTokenGetter(getToken)
+  }, [getToken])
+  return null
+}
 
 const App = () => {
-
-
   return (
     <div>
+      <AuthTokenSync />
       <Toaster />
       <Routes>
         {/* Public Route */}

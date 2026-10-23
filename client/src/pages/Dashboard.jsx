@@ -2,10 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { Sparkles, Gem, Loader2 } from 'lucide-react'; 
 import CreationItem from '../components/CreationItem';
 import { useAuth, useUser } from '@clerk/react';
-import axios from 'axios';
+import api from '../services/api';
 import toast from 'react-hot-toast';
-
-axios.defaults.baseURL = import.meta.env.VITE_BASE_URL;
 
 const Dashboard = () => {
   const [creations, setCreations] = useState([]);
@@ -19,11 +17,7 @@ const Dashboard = () => {
   const getDashboardData = async () => {
     try {
       setLoading(true);
-      const token = await getToken();
-      
-      const { data } = await axios.get('/api/user/get-user-creations', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const { data } = await api.get('/api/user/get-user-creations');
 
       if (data.success) {
         setCreations(data.creations);

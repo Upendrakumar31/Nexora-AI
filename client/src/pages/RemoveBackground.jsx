@@ -1,10 +1,8 @@
 import { Eraser, Sparkles } from 'lucide-react';
 import React, { useState } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { useAuth } from '@clerk/react';
 import toast from 'react-hot-toast';
-
-axios.defaults.baseURL = import.meta.env.VITE_BASE_URL;
 
 const RemoveBackground = () => {
 
@@ -30,18 +28,8 @@ const RemoveBackground = () => {
             const formData = new FormData();
             formData.append('image', input); 
 
-            const token = await getToken();
-            
             // Call backend removeImageBackground controller
-            const { data } = await axios.post('/api/ai/remove-image-background', 
-                formData,
-                { 
-                    headers: { 
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'multipart/form-data'
-                    }
-                } 
-            );
+            const { data } = await api.post('/api/ai/remove-image-background', formData);
 
             if (data.success) {
                 // The backend returns the secure_url from Cloudinary

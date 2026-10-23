@@ -1,11 +1,9 @@
 import { Hash, Sparkles } from 'lucide-react'
 import React, { useState } from 'react'
-import axios from 'axios'
+import api from '../services/api'
 import { useAuth } from '@clerk/react'
 import toast from 'react-hot-toast';
 import Markdown from 'react-markdown';
-
-axios.defaults.baseURL = import.meta.env.VITE_BASE_URL;
 
 const BlogTitles = () => {
 
@@ -26,12 +24,9 @@ const BlogTitles = () => {
       // Crafting a highly specific prompt to get the best results from the Groq API
       const prompt = `Generate 5 catchy, engaging, and SEO-friendly blog titles about "${input}" specifically for the ${selectedCategory} category. Format them clearly as a list.`;
       
-      const token = await getToken();
-      
       // Pointing to the generateBlogTitle controller in your backend
-      const { data } = await axios.post('/api/ai/generate-blog-title', 
-        { prompt },
-        { headers: { Authorization: `Bearer ${token}` }} 
+      const { data } = await api.post('/api/ai/generate-blog-title', 
+        { prompt }
       );
     
       if (data.success) {

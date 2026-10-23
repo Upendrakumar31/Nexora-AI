@@ -1,11 +1,9 @@
 import { FileText, Sparkles, MessageSquare, Send, ArrowLeft, Clock, ChevronRight, Loader2 } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
-import axios from 'axios';
+import api from '../services/api';
 import { useAuth } from '@clerk/react';
 import toast from 'react-hot-toast';
 import Markdown from 'react-markdown';
-
-axios.defaults.baseURL = import.meta.env.VITE_BASE_URL;
 
 const ReviewResume = () => {
 
@@ -40,18 +38,12 @@ const ReviewResume = () => {
         chatEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }, [chatMessages]);
 
-    const getAuthHeaders = async () => {
-        const token = await getToken();
-        return { Authorization: `Bearer ${token}` };
-    };
-
     // --- API Functions ---
 
     const loadResumes = async () => {
         try {
             setResumesLoading(true);
-            const headers = await getAuthHeaders();
-            const { data } = await axios.get('/api/resumes', { headers });
+            const { data } = await api.get('/api/resumes');
             if (data.success) {
                 setResumes(data.resumes);
             }
@@ -65,8 +57,7 @@ const ReviewResume = () => {
     const loadResume = async (resumeId) => {
         try {
             setLoading(true);
-            const headers = await getAuthHeaders();
-            const { data } = await axios.get(`/api/resumes/${resumeId}`, { headers });
+            const { data } = await api.get(`/api/resumes/${resumeId}`);
 
             if (data.success) {
                 const resume = data.resume;
@@ -93,8 +84,7 @@ const ReviewResume = () => {
     const loadChatHistory = async (resumeId) => {
         try {
             setChatHistoryLoading(true);
-            const headers = await getAuthHeaders();
-            const { data } = await axios.get(`/api/resumes/${resumeId}/chat`, { headers });
+            const { data } = await api.get(`/api/resumes/${resumeId}/chat`);
             if (data.success) {
                 setChatMessages(data.messages);
             }
@@ -114,11 +104,9 @@ const ReviewResume = () => {
         setChatLoading(true);
 
         try {
-            const headers = await getAuthHeaders();
-            const { data } = await axios.post(
+            const { data } = await api.post(
                 `/api/resumes/${activeResumeId}/chat`,
-                { message: userMessage },
-                { headers }
+                { message: userMessage }
             );
 
             if (data.success) {
@@ -161,17 +149,7 @@ const ReviewResume = () => {
             const formData = new FormData();
             formData.append('resume', file);
 
-            const token = await getToken();
-
-            const { data } = await axios.post('/api/ai/resume-review',
-                formData,
-                {
-                    headers: {
-                        Authorization: `Bearer ${token}`,
-                        'Content-Type': 'multipart/form-data'
-                    }
-                }
-            );
+            const { data } = await api.post('/api/ai/resume-review', formData);
 
             if (data.success) {
                 setContent(data.content);

@@ -1,10 +1,8 @@
 import React, { useState } from 'react';
 import { Sparkles, Image as ImageIcon } from 'lucide-react'; 
-import axios from 'axios';
+import api from '../services/api';
 import { useAuth } from '@clerk/react';
 import toast from 'react-hot-toast';
-
-axios.defaults.baseURL = import.meta.env.VITE_BASE_URL;
 
 const GenerateImages = () => {
 
@@ -36,12 +34,9 @@ const GenerateImages = () => {
             // Combine user input with the selected style for a better prompt
             const prompt = `${input}, generated in a detailed ${selectedStyle}`;
             
-            const token = await getToken();
-            
             // Call your backend generateImage controller
-            const { data } = await axios.post('/api/ai/generate-image', 
-                { prompt, publish },
-                { headers: { Authorization: `Bearer ${token}` }} 
+            const { data } = await api.post('/api/ai/generate-image', 
+                { prompt, publish }
             );
         
             if (data.success) {
