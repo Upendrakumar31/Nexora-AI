@@ -1,5 +1,6 @@
 import sql from "../configs/db.js";
 import { getAuth } from "@clerk/express";
+import { getCachedPublishedCreations, invalidateCommunityFeedCache } from "../services/userService.js";
 
 function getUserId(req) {
     const authData = getAuth(req);
@@ -24,7 +25,9 @@ export const getUserCreations = async (req, res) => {
 
 export const getPublishedCreations = async (req, res) => {
     try {
-        const creations = await sql`SELECT * FROM creations WHERE publish = true ORDER BY created_at DESC`;
+        const { creations } = await getCachedPublishedCreations(async () => {
+            return await sql`SELECT * FROM creations WHERE publish = true ORDER BY created_at DESC`;
+        });
         res.json({ success: true, creations });
 
     } catch (error) {
@@ -67,6 +70,9 @@ export const toggleLikeCreation = async (req, res) => {
         const formattedArray = `{${updatedLikes.map(uid => `"${String(uid).replace(/"/g, '')}"`).join(',')}}`;
 
         await sql`UPDATE creations SET likes = ${formattedArray}::text[], updated_at = NOW() WHERE id = ${id}`;
+
+        // Invalidate cached community feed since like count changed
+        await invalidateCommunityFeedCache();
 
         res.json({ success: true, message, likes: updatedLikes });
 

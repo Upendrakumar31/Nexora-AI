@@ -1,11 +1,12 @@
 
 import OpenAI from "openai";
-import { clerkClient, getAuth } from "@clerk/express";
+import { getAuth } from "@clerk/express";
 import sql from "../configs/db.js";
 import { v2 as cloudinary } from "cloudinary";
 import axios from "axios";
 import fs from "fs";
 import { resumeReviewSchema, parseReviewResponse, reviewToMarkdown } from "../schemas/resumeReview.js";
+import { recordUsageIncrement, invalidateCommunityFeedCache } from "../services/userService.js";
 
 // Initialize OpenAI SDK pointed to Groq's endpoint
 const AI = new OpenAI({
@@ -53,11 +54,7 @@ export const generateArticle = async (req, res) => {
         `;
 
         if (plan !== "premium") {
-            await clerkClient.users.updateUserMetadata(userId, {
-                privateMetadata: {
-                    free_usage: (Number(free_usage) || 0) + 1,
-                },
-            });
+            await recordUsageIncrement(userId, free_usage);
         }
 
         res.json({ success: true, content });
@@ -111,11 +108,7 @@ export const generateBlogTitle = async (req, res) => {
         `;
 
         if (plan !== "premium") {
-            await clerkClient.users.updateUserMetadata(userId, {
-                privateMetadata: {
-                    free_usage: (Number(free_usage) || 0) + 1,
-                },
-            });
+            await recordUsageIncrement(userId, free_usage);
         }
 
         res.json({ success: true, content });
@@ -183,6 +176,10 @@ export const generateImage = async (req, res) => {
             INSERT INTO creations (user_id, prompt, content, type, publish)
             VALUES (${userId}, ${prompt}, ${secure_url}, 'image', ${publish ?? false})
         `;
+
+        if (publish) {
+            await invalidateCommunityFeedCache();
+        }
 
         res.json({ success: true, content: secure_url });
     } catch (error) {
