@@ -1,5 +1,5 @@
 -- ============================================================
--- QuickAI: Resume RAG Schema Migration
+-- Nexora AI: Resume RAG Schema Migration
 -- Run this against your Neon PostgreSQL database.
 -- Prerequisite: pgvector extension must be available on your Neon project.
 -- ============================================================

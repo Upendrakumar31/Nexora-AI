@@ -7,17 +7,17 @@ import 'dotenv/config';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-async function runMigrations() {
+export async function runMigrations(customSql = sql) {
     console.log('🚀 [Nexora AI Migration] Checking database connection...');
 
-    if (!process.env.DATABASE_URL) {
+    if (!process.env.DATABASE_URL && customSql === sql) {
         console.error('❌ [Nexora AI Migration] DATABASE_URL is not set. Please provide DATABASE_URL in server/.env.');
         process.exit(1);
     }
 
     try {
         // Create schema_migrations tracking table if not exists
-        await sql`
+        await customSql`
             CREATE TABLE IF NOT EXISTS schema_migrations (
                 id SERIAL PRIMARY KEY,
                 name TEXT UNIQUE NOT NULL,
@@ -25,7 +25,7 @@ async function runMigrations() {
             );
         `;
 
-        const appliedRows = await sql`SELECT name FROM schema_migrations`;
+        const appliedRows = await customSql`SELECT name FROM schema_migrations`;
         const appliedSet = new Set(appliedRows.map(r => r.name));
 
         const migrationsDir = path.join(__dirname, '../migrations');
@@ -47,13 +47,13 @@ async function runMigrations() {
             const filePath = path.join(migrationsDir, file);
             const sqlContent = fs.readFileSync(filePath, 'utf8');
 
-            if (typeof sql.unsafe === 'function') {
-                await sql.unsafe(sqlContent);
+            if (typeof customSql.unsafe === 'function') {
+                await customSql.unsafe(sqlContent);
             } else {
-                await sql([sqlContent]);
+                await customSql([sqlContent]);
             }
 
-            await sql`
+            await customSql`
                 INSERT INTO schema_migrations (name)
                 VALUES (${file})
                 ON CONFLICT (name) DO NOTHING;
@@ -64,10 +64,16 @@ async function runMigrations() {
         }
 
         console.log(`🎉 [Nexora AI Migration] Migration complete. Applied ${appliedCount} new migration(s).`);
+        return { success: true, appliedCount };
     } catch (error) {
         console.error('❌ [Nexora AI Migration Error]:', error.message);
-        process.exit(1);
+        if (customSql === sql) {
+            process.exit(1);
+        }
+        throw error;
     }
 }
 
-runMigrations();
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+    runMigrations();
+}

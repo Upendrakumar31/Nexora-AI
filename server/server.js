@@ -6,6 +6,7 @@ import { aiRouter } from './routes/aiRoutes.js';
 import { resumeRouter } from './routes/resumeRoutes.js';
 import connectCloudinary from './configs/cloudinary.js';
 import userRouter from './routes/userRoutes.js';
+import { fileURLToPath } from 'url';
 
 const app = express();
 
@@ -60,6 +61,11 @@ app.use((err, _req, res, _next) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT,()=>{
-    console.log("Server is running on port", PORT);
-})
+if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+    app.listen(PORT, () => {
+        console.log("Server is running on port", PORT);
+    });
+}
+
+export default app;
+export { app };

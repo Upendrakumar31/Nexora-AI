@@ -11,6 +11,8 @@
   "scripts": {
     "dev:server": "npm --prefix server run server",
     "dev:client": "npm --prefix client run dev",
+    "start:server": "npm --prefix server start",
+    "start": "npm run start:server",
     "build:client": "npm --prefix client run build",
     "build": "npm run build:client",
     "lint:client": "npm --prefix client run lint",

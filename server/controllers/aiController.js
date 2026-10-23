@@ -10,7 +10,7 @@ import { recordUsageIncrement, invalidateCommunityFeedCache } from "../services/
 
 // Initialize OpenAI SDK pointed to Groq's endpoint
 const AI = new OpenAI({
-    apiKey: process.env.GROQ_API_KEY,
+    apiKey: process.env.GROQ_API_KEY || 'placeholder_for_offline_init',
     baseURL: "https://api.groq.com/openai/v1",
 });
 

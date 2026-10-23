@@ -1,16 +1,41 @@
-# React + Vite
+# Nexora AI - Frontend Client
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+This package contains the single-page React 19 application for **Nexora AI**, powered by Vite 7 and Tailwind CSS v4.
 
-Currently, two official plugins are available:
+## Key Features & Structure
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **Authentication**: Powered by `@clerk/react` with sign-in modals, profile management, and billing pricing tables.
+- **API Client**: Centralized Axios instance at `src/services/api.js` with automatic Bearer token injection and 401 error interception.
+- **Pages**:
+  - `Home`: Marketing landing page with hero CTA, interactive AI tools grid, testimonials, and plan comparison.
+  - `Dashboard`: User generation metrics, plan tier indicator, and recent creation history.
+  - `WriteArticle`: Long-form article generator with word count selector and Markdown preview.
+  - `BlogTitles`: SEO blog title ideation across 8 industry categories.
+  - `GenerateImages`: Text-to-image synthesis with style selection and community publishing toggle.
+  - `RemoveBackground`: Image background remover with transparent checkerboard preview.
+  - `RemoveObject`: Inpainting tool to eliminate unwanted elements from photos.
+  - `ReviewResume`: Dual-purpose career suite with AI resume critique and grounded RAG conversational assistant.
+  - `Community`: Public creation showcase with likes and feed caching.
 
-## React Compiler
+## Local Development
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+```bash
+# Install dependencies from monorepo root or inside client/
+npm install
 
-## Expanding the ESLint configuration
+# Start Vite dev server on http://localhost:5173
+npm run dev
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and [`typescript-eslint`](https://typescript-eslint.io) in your project.
+# Run production build
+npm run build
+
+# Run ESLint check
+npm run lint
+```
+
+## Environment Configuration
+
+Configure `client/.env` based on `client/.env.example`:
+
+- `VITE_CLERK_PUBLISHABLE_KEY`: Clerk publishable API key (`pk_test_...`)
+- `VITE_BASE_URL`: Express backend origin (e.g., `http://localhost:3000`)
