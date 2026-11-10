@@ -14,6 +14,9 @@ export function getUserCacheKey(userId) {
  * Checks Redis cache first (10 min TTL). If cache miss or Redis is unavailable,
  * retrieves directly from Clerk and populates the cache.
  */
+export const NEXORA_PRO_PLAN_KEY = 'nexora_pro';
+export const NEXORA_PRO_PLAN_ID = 'cplan_3LEHfnRMblcgbk48T6cVd3QLW5H';
+
 export async function getUserMetadata(userId) {
     if (!userId) {
         throw new Error('User ID is required to fetch metadata');
@@ -24,36 +27,94 @@ export async function getUserMetadata(userId) {
     // 1. Try to read from Redis cache
     const cached = await cacheGet(cacheKey);
     if (cached && typeof cached === 'object' && cached.plan) {
+        console.log(`[Diagnostic:Subscription] operation=getUserMetadata userId=${userId} fromCache=true subscriptionStatus=${cached.subscription?.status || 'none'} matchedPlan=${cached.subscription?.planSlug || 'none'} normalizedPlan=${cached.plan}`);
         return {
             plan: cached.plan,
             free_usage: Number(cached.free_usage) || 0,
             fromCache: true,
+            subscription: cached.subscription || null,
         };
     }
 
     // 2. Cache miss or Redis offline: Query Clerk API directly
     const user = await clerkClient.users.getUser(userId);
 
-    const currentPlan = user.publicMetadata?.plan || 'free';
-    const hasPremiumPlan = currentPlan === 'premium';
+    // Verify active Clerk Billing subscription
+    let isSubscribedToPro = false;
+    let subscriptionData = null;
+
+    try {
+        if (clerkClient.billing?.getUserBillingSubscription) {
+            const sub = await clerkClient.billing.getUserBillingSubscription(userId);
+            if (sub && sub.status === 'active') {
+                const items = Array.isArray(sub.subscriptionItems)
+                    ? sub.subscriptionItems
+                    : Array.isArray(sub.subscription_items)
+                    ? sub.subscription_items
+                    : [];
+
+                const activeProItem = items.find(item => {
+                    const itemActive = item.status === 'active';
+                    const planSlug = (item.plan?.slug || item.plan?.key || '').toLowerCase();
+                    const planId = item.planId || item.plan?.id || '';
+                    const planName = (item.plan?.name || '').toLowerCase();
+
+                    const matchesPlan =
+                        planSlug === NEXORA_PRO_PLAN_KEY ||
+                        planSlug.includes('pro') ||
+                        planId === NEXORA_PRO_PLAN_ID ||
+                        planName.includes('nexora pro') ||
+                        planName.includes('pro');
+
+                    return itemActive && matchesPlan;
+                });
+
+                if (activeProItem) {
+                    isSubscribedToPro = true;
+                    subscriptionData = {
+                        id: sub.id,
+                        status: sub.status,
+                        planPeriod: activeProItem.planPeriod || activeProItem.plan_period,
+                        planName: activeProItem.plan?.name || 'Nexora Pro',
+                        planSlug: activeProItem.plan?.slug || NEXORA_PRO_PLAN_KEY,
+                    };
+                }
+            }
+        }
+    } catch (billingErr) {
+        // Safe failover: Clerk Billing API may 404 if user has no subscription records or billing is in bypass
+        console.warn(`[userService] Billing lookup failed for ${userId}:`, billingErr.message);
+    }
+
+    // Canonical enforcement: strictly require verified active Clerk subscription.
+    // Do not trust arbitrary metadata or client-side claims alone as proof of paid subscription.
+    const hasPremiumPlan = Boolean(isSubscribedToPro);
     let free_usage = 0;
 
     if (!hasPremiumPlan && user.privateMetadata?.free_usage !== undefined) {
         free_usage = Number(user.privateMetadata.free_usage) || 0;
     } else if (!hasPremiumPlan) {
-        await clerkClient.users.updateUserMetadata(userId, {
-            privateMetadata: { free_usage: 0 },
-        });
+        try {
+            await clerkClient.users.updateUserMetadata(userId, {
+                privateMetadata: { free_usage: 0 },
+            });
+        } catch {
+            // Ignore metadata update error if read-only
+        }
         free_usage = 0;
     }
 
     const metadata = {
         plan: hasPremiumPlan ? 'premium' : 'free',
         free_usage,
+        subscription: subscriptionData,
     };
 
-    // 3. Cache the metadata in Redis (safe even if Redis fails)
-    await cacheSet(cacheKey, metadata, USER_CACHE_TTL);
+    // 3. Cache the metadata in Redis (short TTL for free users to pick up upgrades quickly, 10 min for verified pro)
+    const cacheTtl = hasPremiumPlan ? USER_CACHE_TTL : 30;
+    await cacheSet(cacheKey, metadata, cacheTtl);
+
+    console.log(`[Diagnostic:Subscription] operation=getUserMetadata userId=${userId} fromCache=false subscriptionStatus=${subscriptionData?.status || 'none'} matchedPlan=${subscriptionData?.planSlug || 'none'} normalizedPlan=${metadata.plan}`);
 
     return {
         ...metadata,

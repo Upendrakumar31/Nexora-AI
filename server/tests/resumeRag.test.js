@@ -993,7 +993,7 @@ describe('resumeReview Ingestion Failure Handling (aiController)', () => {
         const sqlQueries = [];
 
         try {
-            globalThis.fetch = async (url, opts) => {
+            activeFetchInterceptor = async (url, opts) => {
                 const urlStr = String(url);
 
                 // 1. Mock Groq LLM review response
@@ -1099,7 +1099,7 @@ describe('resumeReview Ingestion Failure Handling (aiController)', () => {
             assert.strictEqual(updateCall.params[0], 'failed');
             assert.strictEqual(updateCall.params[1], 'resume-failed-test-id-123');
         } finally {
-            globalThis.fetch = origFetch;
+            activeFetchInterceptor = null;
             if (fs.existsSync(tempPdfPath)) {
                 fs.unlinkSync(tempPdfPath);
             }

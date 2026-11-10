@@ -32,8 +32,8 @@ Nexora AI is a production-grade full-stack platform built with **React 19**, **E
       │                    │                    │
 ┌─────▼──────┐       ┌─────▼──────┐       ┌─────▼──────┐
 │  Groq LLM  │       │GoogleGemini│       │ Cloudinary │
-│Articles &  │       │ 768d Vector│       │  & Clipdrop│
-│Blog Titles │       │ Embeddings │       │ Inpainting │
+│Articles &  │       │ 768d Vector│       │ & Clipdrop │
+│Blog Titles │       │ Embeddings │       │ Text-to-Img│
 └────────────┘       └────────────┘       └────────────┘
 ```
 
@@ -45,13 +45,15 @@ Nexora AI is a production-grade full-stack platform built with **React 19**, **E
 - **Blog Title Generator**: SEO-optimized title generator tailored across 8 industry categories.
 - **AI Image Generation & Community Feed**: Text-to-image synthesis with style presets, Cloudinary storage, public showcase feed, and cached like interactions.
 - **Background Removal**: Neural background removal with transparency checkerboard preview.
-- **Object Removal**: Generative inpainting to remove unwanted items from photographs seamlessly.
 - **Resume Reviewer & RAG Grounded Chat**:
   - Semantic resume parsing and structured Zod schema review.
   - Multi-chunk text embedding via Google Gemini (`gemini-embedding-001`, 768 dimensions).
   - Neon PostgreSQL vector storage with cosine similarity search (HNSW index).
   - Grounded contextual chat restricted strictly to resume career facts and suggestions.
-- **Usage & Quota Management**: Clerk metadata synchronization with Redis Cloud caching to enforce usage boundaries (10 free generations) without stale-cache bypasses.
+- **Clerk Billing & Subscription Management**:
+  - **Free / Starter Plan** (`free`): 10 free generations for AI articles & blog titles, community feed & likes.
+  - **Nexora Pro Plan** (`nexora_pro` Clerk key, normalized as `premium` in backend): Unlimited generations, Clipdrop high-res image generation, Cloudinary neural background removal, and AI resume review with vector RAG chat.
+  - Redis Cloud caching for user plan status (10 min TTL) with instant synchronization upon checkout.
 
 ---
 
@@ -65,8 +67,8 @@ Nexora AI is a production-grade full-stack platform built with **React 19**, **E
   - [Redis Cloud](https://redis.io/try-free/) (optional; falls back gracefully if unconfigured)
   - [GroqCloud](https://console.groq.com) for LLM inference (`llama-3.3-70b-versatile` or `openai/gpt-oss-120b`)
   - [Google AI Studio](https://aistudio.google.com) for Gemini vector embeddings
-  - [Cloudinary](https://cloudinary.com) for image hosting
-  - [Clipdrop](https://clipdrop.co/apis) for background and object removal
+  - [Clipdrop](https://clipdrop.co) for text-to-image generation
+  - [Cloudinary](https://cloudinary.com) for image hosting & AI transformations
 
 ---
 
@@ -92,7 +94,7 @@ cp server/.env.example server/.env
 | `GROQ_MODEL` | Groq production model ID | `llama-3.3-70b-versatile` or `openai/gpt-oss-120b` |
 | `GEMINI_API_KEY` | Google Gemini API key | `AIzaSy...` |
 | `RAG_MIN_SIMILARITY` | Cosine similarity threshold for RAG retrieval | `0.40` |
-| `CLIPDROP_API_KEY` | Clipdrop API key | `...` |
+| `CLIPDROP_API_KEY` | Clipdrop API key for text-to-image synthesis | `...` |
 | `CLOUDINARY_CLOUD_NAME`| Cloudinary cloud name | `...` |
 | `CLOUDINARY_API_KEY` | Cloudinary API key | `...` |
 | `CLOUDINARY_API_SECRET`| Cloudinary API secret | `...` |

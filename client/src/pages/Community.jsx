@@ -1,4 +1,4 @@
-import { useAuth, useUser } from '@clerk/react'
+import { useUser } from '@clerk/react'
 import React, { useEffect, useState } from 'react'
 import { Heart, Loader2 } from 'lucide-react'
 import api from '../services/api'
@@ -7,7 +7,6 @@ import toast from 'react-hot-toast'
 const Community = () => {
   const [creations, setCreations] = useState([]);
   const { user } = useUser();
-  const { getToken } = useAuth();
   const [loading, setLoading] = useState(true);
 
   const fetchCreations = async () => {
@@ -42,7 +41,7 @@ const Community = () => {
         if (isNowLiked) {
           toast.success("Creation liked");
         } else {
-          toast.success("Creation unlinked");
+          toast.success("Creation unliked");
         }
 
         // Optimistically update the UI creations state

@@ -1,9 +1,10 @@
-import { Edit, Sparkles } from 'lucide-react'
+import { Edit, Sparkles, Gem } from 'lucide-react'
 import React, { useState } from 'react'
 import api from '../services/api'
-import { useAuth } from '@clerk/react'
+import useSubscriptionPlan from '../hooks/useSubscriptionPlan'
 import toast from 'react-hot-toast';
 import Markdown from 'react-markdown';
+import { isSubscriptionEntitlementError } from '../utils/subscriptionUtils';
 
 const WriteArticle = () => {
   const articleLength = [
@@ -17,7 +18,7 @@ const WriteArticle = () => {
   const [loading, setLoading] = useState(false)  
   const [content, setContent] = useState('') 
 
-  const {getToken} = useAuth()
+  const { isPremium, openCheckout } = useSubscriptionPlan();
 
   const onSubmitHandler = async (e) => {
     e.preventDefault();
@@ -33,9 +34,16 @@ const WriteArticle = () => {
         setContent(data.content);
       } else {
         toast.error(data.message); 
+        if (isSubscriptionEntitlementError(data.message)) {
+          openCheckout();
+        }
       }
     } catch (error) {
-      toast.error(error.message);
+      const errorMsg = error.response?.data?.message || error.message;
+      toast.error(errorMsg);
+      if (isSubscriptionEntitlementError(error)) {
+        openCheckout();
+      }
     } finally {
       setLoading(false); 
     }
@@ -45,9 +53,20 @@ const WriteArticle = () => {
     <div className='h-full overflow-y-scroll p-6 flex items-start flex-wrap gap-4 text-slate-700'>
         {/* left col */}
         <form onSubmit={onSubmitHandler} className='w-full max-w-lg p-4 bg-white rounded-lg border border-gray-200'>
-            <div className='flex items-center gap-3'>
-                <Sparkles className='w-6 text-[#4A7AFF]'/>
-                <h1 className='text-xl font-semibold'>Article Configuration</h1>
+            <div className='flex items-center justify-between'>
+                <div className='flex items-center gap-3'>
+                    <Sparkles className='w-6 text-[#4A7AFF]'/>
+                    <h1 className='text-xl font-semibold'>Article Configuration</h1>
+                </div>
+                {isPremium ? (
+                    <span className='inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-[#9234EA] border border-purple-200'>
+                        <Gem className='w-3 h-3' /> Nexora Pro
+                    </span>
+                ) : (
+                    <span className='text-xs text-gray-500 font-medium bg-gray-100 px-2.5 py-0.5 rounded-full'>
+                        10 Free Generations
+                    </span>
+                )}
             </div>
             
             <p className='mt-6 text-sm font-medium'>Article Topic</p>

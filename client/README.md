@@ -13,7 +13,6 @@ This package contains the single-page React 19 application for **Nexora AI**, po
   - `BlogTitles`: SEO blog title ideation across 8 industry categories.
   - `GenerateImages`: Text-to-image synthesis with style selection and community publishing toggle.
   - `RemoveBackground`: Image background remover with transparent checkerboard preview.
-  - `RemoveObject`: Inpainting tool to eliminate unwanted elements from photos.
   - `ReviewResume`: Dual-purpose career suite with AI resume critique and grounded RAG conversational assistant.
   - `Community`: Public creation showcase with likes and feed caching.
 

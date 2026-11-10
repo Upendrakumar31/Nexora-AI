@@ -1,8 +1,9 @@
-import { Eraser, Sparkles } from 'lucide-react';
+import { Eraser, Sparkles, Gem, Lock, ArrowRight } from 'lucide-react';
 import React, { useState } from 'react';
 import api from '../services/api';
-import { useAuth } from '@clerk/react';
+import useSubscriptionPlan from '../hooks/useSubscriptionPlan';
 import toast from 'react-hot-toast';
+import { isSubscriptionEntitlementError } from '../utils/subscriptionUtils';
 
 const RemoveBackground = () => {
 
@@ -10,11 +11,21 @@ const RemoveBackground = () => {
     const [loading, setLoading] = useState(false);
     const [content, setContent] = useState('');
 
-    const { getToken } = useAuth();
+    const { isPremium, openCheckout } = useSubscriptionPlan();
 
     const onSubmitHandler = async (e) => {
         e.preventDefault();
         
+        // Frontend gating check
+        if (!isPremium) {
+            toast('Background Removal requires Nexora Pro.', {
+                icon: '🔒',
+                duration: 4000,
+            });
+            openCheckout();
+            return;
+        }
+
         // Manual check replaces the HTML5 'required' attribute
         if (!input) {
             toast.error("Please select an image first");
@@ -37,11 +48,17 @@ const RemoveBackground = () => {
                 toast.success('Background removed successfully!');
             } else {
                 toast.error(data.message); 
+                if (isSubscriptionEntitlementError(data.message)) {
+                    openCheckout();
+                }
             }
         } catch (error) {
             console.error("🚨 [FRONTEND] API Error:", error);
-            // Enhanced error message extraction to show backend errors clearly
-            toast.error(error.response?.data?.message || error.message);
+            const errorMsg = error.response?.data?.message || error.message;
+            toast.error(errorMsg);
+            if (isSubscriptionEntitlementError(error)) {
+                openCheckout();
+            }
         } finally {
             setLoading(false); 
         }
@@ -52,10 +69,39 @@ const RemoveBackground = () => {
             
             {/* Left Col */}
             <form onSubmit={onSubmitHandler} className='w-full max-w-lg p-6 bg-white rounded-lg border border-gray-200'>
-                <div className='flex items-center gap-3'>
-                    <Sparkles className='w-6 text-[#FF4938]'/>
-                    <h1 className='text-xl font-semibold'>Background Removal</h1>
+                <div className='flex items-center justify-between'>
+                    <div className='flex items-center gap-3'>
+                        <Sparkles className='w-6 text-[#FF4938]'/>
+                        <h1 className='text-xl font-semibold'>Background Removal</h1>
+                    </div>
+                    <span className='inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-[#9234EA] border border-purple-200'>
+                        <Gem className='w-3 h-3' /> Pro Feature
+                    </span>
                 </div>
+
+                {/* Free plan upgrade banner */}
+                {!isPremium && (
+                    <div className='mt-4 p-4 rounded-xl bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 text-slate-700'>
+                        <div className='flex items-start gap-3'>
+                            <div className='w-8 h-8 rounded-lg bg-[#9234EA]/10 text-[#9234EA] flex items-center justify-center shrink-0 mt-0.5'>
+                                <Lock className='w-4 h-4' />
+                            </div>
+                            <div className='flex-1'>
+                                <h2 className='text-sm font-semibold text-slate-900'>Nexora Pro Required</h2>
+                                <p className='text-xs text-gray-600 mt-1 leading-relaxed'>
+                                    Neural background removal is powered by Cloudinary AI. Subscribe to Nexora Pro ($19/mo) to unlock.
+                                </p>
+                                <button
+                                    type='button'
+                                    onClick={() => openCheckout()}
+                                    className='mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-[#3C81F6] to-[#9234EA] text-white shadow-sm hover:opacity-95 cursor-pointer'
+                                >
+                                    Upgrade to Nexora Pro <ArrowRight className='w-3 h-3' />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
                 
                 <p className='mt-6 text-sm font-medium'>Upload image</p>
                 <input 
@@ -68,15 +114,24 @@ const RemoveBackground = () => {
                 
                 <p className='text-xs text-gray-500 font-light mt-1'>Supports JPG, PNG, and other image formats</p>
                 
-                {/* ADDED: type="submit" to guarantee form execution */}
-                <button type="submit" disabled={loading} className='w-full flex justify-center items-center gap-2 bg-gradient-to-r from-[#F6AB41] to-[#FF4938] text-white px-4 py-3 mt-6 text-sm font-medium rounded-lg cursor-pointer hover:opacity-90 transition disabled:opacity-75 disabled:cursor-not-allowed'>
-                    {loading ? (
-                        <span className='w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin'></span>
-                    ) : (
-                        <Eraser className='w-5' />
-                    )}
-                    Remove Background
-                </button>
+                {!isPremium ? (
+                    <button
+                        type='button'
+                        onClick={() => openCheckout()}
+                        className='w-full flex justify-center items-center gap-2 bg-gradient-to-r from-[#3C81F6] to-[#9234EA] text-white px-4 py-3 mt-6 text-sm font-medium rounded-lg cursor-pointer shadow hover:opacity-95 transition'
+                    >
+                        <Lock className='w-4 h-4' /> Upgrade to Nexora Pro to Remove Background
+                    </button>
+                ) : (
+                    <button type="submit" disabled={loading} className='w-full flex justify-center items-center gap-2 bg-gradient-to-r from-[#F6AB41] to-[#FF4938] text-white px-4 py-3 mt-6 text-sm font-medium rounded-lg cursor-pointer hover:opacity-90 transition disabled:opacity-75 disabled:cursor-not-allowed'>
+                        {loading ? (
+                            <span className='w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin'></span>
+                        ) : (
+                            <Eraser className='w-5' />
+                        )}
+                        Remove Background
+                    </button>
+                )}
             </form>
 
             {/* Right Col */}

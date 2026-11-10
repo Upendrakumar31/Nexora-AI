@@ -1,8 +1,15 @@
-import { describe, it } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { cacheGet, cacheSet, cacheDel, isRedisReady, getRedisClient } from '../configs/redis.js';
 
 describe('Redis Cloud Client Fallback & Safety', () => {
+    after(() => {
+        const client = getRedisClient();
+        if (client) {
+            client.disconnect();
+        }
+    });
+
     it('handles cacheGet gracefully when Redis is unconfigured or offline', async () => {
         const val = await cacheGet('test_non_existent_key');
         assert.strictEqual(val, null, 'Expected null when key not found or Redis offline');

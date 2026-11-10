@@ -1,7 +1,8 @@
 import React from 'react';
 import { useClerk, useUser } from '@clerk/react';
-import { Eraser, FileText, Hash, Home, Image as ImageIcon, LogOut, Scissors, Edit, Users } from 'lucide-react';
+import { Eraser, FileText, Hash, Home, Image as ImageIcon, LogOut, Edit, Users, Gem } from 'lucide-react';
 import { NavLink } from 'react-router-dom'; 
+import { useSubscriptionPlan } from '../hooks/useSubscriptionPlan';
 
 const navItems = [
     {to: '/ai', label: 'Dashboard', Icon: Home},
@@ -9,18 +10,14 @@ const navItems = [
     {to: '/ai/blog-titles', label: 'Blog Titles', Icon: Hash},
     {to: '/ai/generate-images', label: 'Generate Images', Icon: ImageIcon},
     {to: '/ai/remove-background', label: 'Remove Background', Icon: Eraser},
-    {to: '/ai/remove-object', label: 'Remove Object', Icon: Scissors},
     {to: '/ai/review-resume', label: 'Review Resume', Icon: FileText},
     {to: '/ai/community', label: 'Community', Icon: Users},
 ]
 
 const Sidebar = ({ sidebar, setSidebar }) => {
-
     const { user } = useUser();
-    const { signOut, openUserProfile } = useClerk()
-
-    // Dynamically check the user's plan from Clerk's public metadata
-    const isPremium = user?.publicMetadata?.plan === 'premium';
+    const { signOut, openUserProfile } = useClerk();
+    const { isPremium } = useSubscriptionPlan();
 
     // FALLBACK LOGIC: Use fullName, OR the email address, OR a default string
     const displayName = user?.fullName || user?.primaryEmailAddress?.emailAddress || 'User';
@@ -31,7 +28,6 @@ const Sidebar = ({ sidebar, setSidebar }) => {
             <div className='my-7 w-full'>
                 <img src={user?.imageUrl} alt="User avatar" className='w-13 rounded-full mx-auto'/>
                 
-                {/* Updated to use displayName */}
                 <h1 className='mt-1 text-center font-semibold text-sm px-2 truncate'>
                     {displayName}
                 </h1>
@@ -53,19 +49,18 @@ const Sidebar = ({ sidebar, setSidebar }) => {
 
             <div className='w-full border-t border-gray-200 p-4 px-7 flex items-center justify-between'>
                 
-                <div onClick={openUserProfile} className='flex gap-2 items-center cursor-pointer overflow-hidden'>
+                <div onClick={openUserProfile} className='flex gap-2 items-center cursor-pointer overflow-hidden group' title="Manage profile & subscription">
                     <img src={user?.imageUrl} className='w-8 rounded-full min-w-8' alt="" />
                     <div className='overflow-hidden'>
                         
-                        {/* Updated to use displayName */}
-                        <h1 className='text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis w-24'>
+                        <h1 className='text-sm font-medium whitespace-nowrap overflow-hidden text-ellipsis w-24 group-hover:text-purple-600 transition'>
                             {displayName}
                         </h1>
                         
                         <p className='text-xs font-medium'>
                             {isPremium ? (
-                                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#9234EA] to-[#3C81F6]">
-                                    Premium Plan
+                                <span className="text-transparent bg-clip-text bg-gradient-to-r from-[#9234EA] to-[#3C81F6] font-semibold inline-flex items-center gap-1">
+                                    <Gem className='w-3 h-3 text-[#9234EA]' /> Nexora Pro
                                 </span>
                             ) : (
                                 <span className="text-gray-500">Free Plan</span>

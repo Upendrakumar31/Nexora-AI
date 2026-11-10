@@ -16,7 +16,8 @@ if (!process.env.CLERK_PUBLISHABLE_KEY || !process.env.CLERK_PUBLISHABLE_KEY.sta
 }
 
 import app from '../server.js';
-import { runMigrations } from '../scripts/migrate.js';
+import { runMigrations, splitSqlStatements } from '../scripts/migrate.js';
+import { getUserCreations } from '../controllers/userController.js';
 
 /**
  * Pure in-memory HTTP dispatch using Express request/response prototypes.
@@ -80,6 +81,12 @@ describe('API Routes & Authentication Guards', () => {
         const res = await simulateRequest({ method: 'GET', url: '/' });
         assert.strictEqual(res.status, 200);
         assert.ok(typeof res.body === 'string' && res.body.includes('Nexora AI Server is Live!'));
+    });
+
+    it('GET /health responds with health status (HTTP 200)', async () => {
+        const res = await simulateRequest({ method: 'GET', url: '/health' });
+        assert.strictEqual(res.status, 200);
+        assert.deepStrictEqual(res.body, { status: 'ok', service: 'Nexora AI Server' });
     });
 
     it('blocks unauthenticated requests to protected /api/ai routes (HTTP 401 or 302 redirect)', async () => {
@@ -171,6 +178,171 @@ describe('Database Migrations Safety & Idempotency', () => {
         const result2 = await runMigrations(mockSql);
         assert.strictEqual(result2.success, true);
         assert.strictEqual(result2.appliedCount, 0, 'Second run must skip all previously applied migrations');
+    });
+
+    it('splitSqlStatements correctly splits multi-statement SQL with comments and blocks', () => {
+        const sampleSql = `
+            -- Table comment
+            CREATE TABLE IF NOT EXISTS test_table (id SERIAL PRIMARY KEY);
+            /* Block comment */
+            CREATE INDEX IF NOT EXISTS idx_test ON test_table(id);
+            DO $$
+            BEGIN
+                IF NOT EXISTS (SELECT 1 FROM pg_tables WHERE tablename = 'foo') THEN
+                    NULL;
+                END IF;
+            END $$;
+        `;
+        const stmts = splitSqlStatements(sampleSql);
+        assert.strictEqual(stmts.length, 3);
+        assert.ok(stmts[0].includes('CREATE TABLE IF NOT EXISTS test_table'));
+        assert.ok(stmts[1].includes('CREATE INDEX IF NOT EXISTS idx_test'));
+        assert.ok(stmts[2].includes('DO $$') && stmts[2].includes('END $$'));
+    });
+});
+
+describe('getUserCreations Controller Regression & Safety', () => {
+    it('returns HTTP 401 when request lacks authenticated userId', async () => {
+        let status = null;
+        let responseJson = null;
+
+        const mockReq = {};
+        const mockRes = {
+            status: (code) => {
+                status = code;
+                return {
+                    json: (data) => { responseJson = data; }
+                };
+            },
+            json: (data) => { responseJson = data; }
+        };
+
+        await getUserCreations(mockReq, mockRes);
+        assert.strictEqual(status, 401);
+        assert.strictEqual(responseJson.success, false);
+        assert.match(responseJson.message, /User ID not found/);
+    });
+
+    it('returns empty creations list without 500 when table exists and user has no creations', async () => {
+        let responseJson = null;
+        let status = 200;
+
+        const mockReq = { userId: 'user_without_creations_test_123' };
+        const mockRes = {
+            status: (code) => {
+                status = code;
+                return {
+                    json: (data) => { responseJson = data; }
+                };
+            },
+            json: (data) => {
+                responseJson = data;
+            }
+        };
+
+        const mockSql = async () => [];
+
+        await getUserCreations(mockReq, mockRes, mockSql);
+
+        assert.strictEqual(status, 200);
+        assert.strictEqual(responseJson.success, true);
+        assert.deepStrictEqual(responseJson.creations, []);
+    });
+
+    it('returns 500 when database query encounters an unexpected error', async () => {
+        let status = 200;
+        let responseJson = null;
+
+        const mockReq = { userId: 'test_user_db_error' };
+        const mockRes = {
+            status: (code) => {
+                status = code;
+                return {
+                    json: (data) => { responseJson = data; }
+                };
+            },
+            json: (data) => {
+                responseJson = data;
+            }
+        };
+
+        const failingSql = async () => {
+            throw new Error('Neon database query failed');
+        };
+
+        await getUserCreations(mockReq, mockRes, failingSql);
+
+        assert.strictEqual(status, 500);
+        assert.strictEqual(responseJson.success, false);
+        assert.strictEqual(responseJson.message, 'Neon database query failed');
+    });
+
+    it('does not treat Express next function as customSql when mounted in router', async () => {
+        let responseJson = null;
+        let status = 200;
+        let nextCalledWithError = null;
+
+        const mockReq = { userId: 'user_express_next_test' };
+        const mockRes = {
+            status: (code) => {
+                status = code;
+                return {
+                    json: (data) => { responseJson = data; }
+                };
+            },
+            json: (data) => {
+                responseJson = data;
+            }
+        };
+
+        // Express passes router callback function `next` as 3rd parameter
+        function next(err) {
+            if (err) nextCalledWithError = err;
+        }
+
+        const origFetch = globalThis.fetch;
+        try {
+            globalThis.fetch = async (url, opts) => {
+                const urlStr = String(url);
+                if (urlStr.includes('neon.tech') || urlStr.includes('postgres')) {
+                    return {
+                        ok: true,
+                        json: async () => ({
+                            command: 'SELECT',
+                            fields: [],
+                            rows: [],
+                            rowAsArray: false,
+                        }),
+                    };
+                }
+                return origFetch(url, opts);
+            };
+
+            // Must NOT call next([template_strings]) as an error
+            await getUserCreations(mockReq, mockRes, next);
+
+            assert.strictEqual(nextCalledWithError, null, 'Express next() should not be invoked as an error');
+            assert.strictEqual(status, 200);
+            assert.strictEqual(responseJson.success, true);
+            assert.ok(Array.isArray(responseJson.creations));
+        } finally {
+            globalThis.fetch = origFetch;
+        }
+    });
+
+    it('safely exits if response headers have already been sent', async () => {
+        let jsonCallCount = 0;
+        const mockReq = { userId: 'user_headers_sent_test' };
+        const mockRes = {
+            headersSent: true,
+            status: () => ({ json: () => { jsonCallCount++; } }),
+            json: () => { jsonCallCount++; }
+        };
+
+        const mockSql = async () => [];
+        await getUserCreations(mockReq, mockRes, mockSql);
+
+        assert.strictEqual(jsonCallCount, 0, 'Must not send headers or json when headersSent is true');
     });
 });
 

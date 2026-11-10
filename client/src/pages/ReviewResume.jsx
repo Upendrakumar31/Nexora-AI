@@ -1,11 +1,14 @@
-import { FileText, Sparkles, MessageSquare, Send, ArrowLeft, Clock, ChevronRight, Loader2 } from 'lucide-react';
+import { FileText, Sparkles, MessageSquare, Send, ArrowLeft, Clock, ChevronRight, Loader2, Gem, Lock, ArrowRight } from 'lucide-react';
 import React, { useState, useEffect, useRef } from 'react';
 import api from '../services/api';
-import { useAuth } from '@clerk/react';
+import useSubscriptionPlan from '../hooks/useSubscriptionPlan';
 import toast from 'react-hot-toast';
 import Markdown from 'react-markdown';
+import { isSubscriptionEntitlementError } from '../utils/subscriptionUtils';
 
 const ReviewResume = () => {
+
+    const { isPremium, openCheckout } = useSubscriptionPlan();
 
     // --- State ---
     const [file, setFile] = useState(null);
@@ -26,7 +29,6 @@ const ReviewResume = () => {
     const [chatHistoryLoading, setChatHistoryLoading] = useState(false);
 
     const chatEndRef = useRef(null);
-    const { getToken } = useAuth();
 
     // --- Load saved resumes on mount ---
     useEffect(() => {
@@ -98,6 +100,15 @@ const ReviewResume = () => {
     const sendChatMessage = async () => {
         if (!chatInput.trim() || chatLoading || !activeResumeId) return;
 
+        if (!isPremium) {
+            toast('Vector Resume Chat requires Nexora Pro.', {
+                icon: '🔒',
+                duration: 4000,
+            });
+            openCheckout();
+            return;
+        }
+
         const userMessage = chatInput.trim();
         setChatInput('');
         setChatMessages(prev => [...prev, { role: 'user', content: userMessage, id: Date.now() }]);
@@ -117,12 +128,19 @@ const ReviewResume = () => {
                 }]);
             } else {
                 toast.error(data.message);
+                if (isSubscriptionEntitlementError(data.message)) {
+                    openCheckout();
+                }
                 // Remove the optimistic user message on failure
                 setChatMessages(prev => prev.slice(0, -1));
                 setChatInput(userMessage);
             }
         } catch (error) {
-            toast.error(error.response?.data?.message || 'Chat failed');
+            const errorMsg = error.response?.data?.message || 'Chat failed';
+            toast.error(errorMsg);
+            if (isSubscriptionEntitlementError(error)) {
+                openCheckout();
+            }
             setChatMessages(prev => prev.slice(0, -1));
             setChatInput(userMessage);
         } finally {
@@ -133,6 +151,16 @@ const ReviewResume = () => {
     // --- Upload Handler (enhanced) ---
     const onSubmitHandler = async (e) => {
         e.preventDefault();
+
+        // Frontend gating check
+        if (!isPremium) {
+            toast('Resume Review requires Nexora Pro.', {
+                icon: '🔒',
+                duration: 4000,
+            });
+            openCheckout();
+            return;
+        }
 
         if (!file) {
             toast.error("Please upload a resume first");
@@ -162,10 +190,17 @@ const ReviewResume = () => {
                 loadResumes();
             } else {
                 toast.error(data.message);
+                if (isSubscriptionEntitlementError(data.message)) {
+                    openCheckout();
+                }
             }
         } catch (error) {
             console.error("🚨 [FRONTEND] API Error:", error);
-            toast.error(error.response?.data?.message || error.message);
+            const errorMsg = error.response?.data?.message || error.message;
+            toast.error(errorMsg);
+            if (isSubscriptionEntitlementError(error)) {
+                openCheckout();
+            }
         } finally {
             setLoading(false);
         }
@@ -221,10 +256,39 @@ const ReviewResume = () => {
             <div className='w-full max-w-lg space-y-4'>
                 {/* Upload Form */}
                 <form onSubmit={onSubmitHandler} className='p-6 bg-white rounded-lg border border-gray-200'>
-                    <div className='flex items-center gap-3'>
-                        <Sparkles className='w-6 text-[#00B47D]' />
-                        <h1 className='text-xl font-semibold'>Resume Review</h1>
+                    <div className='flex items-center justify-between'>
+                        <div className='flex items-center gap-3'>
+                            <Sparkles className='w-6 text-[#00B47D]' />
+                            <h1 className='text-xl font-semibold'>Resume Review</h1>
+                        </div>
+                        <span className='inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-[#9234EA] border border-purple-200'>
+                            <Gem className='w-3 h-3' /> Pro Feature
+                        </span>
                     </div>
+
+                    {/* Free plan upgrade banner */}
+                    {!isPremium && (
+                        <div className='mt-4 p-4 rounded-xl bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 text-slate-700'>
+                            <div className='flex items-start gap-3'>
+                                <div className='w-8 h-8 rounded-lg bg-[#9234EA]/10 text-[#9234EA] flex items-center justify-center shrink-0 mt-0.5'>
+                                    <Lock className='w-4 h-4' />
+                                </div>
+                                <div className='flex-1'>
+                                    <h2 className='text-sm font-semibold text-slate-900'>Nexora Pro Required</h2>
+                                    <p className='text-xs text-gray-600 mt-1 leading-relaxed'>
+                                        Resume review & semantic vector RAG chat are powered by Gemini embeddings and Groq. Subscribe to Nexora Pro ($19/mo) to unlock.
+                                    </p>
+                                    <button
+                                        type='button'
+                                        onClick={() => openCheckout()}
+                                        className='mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-[#3C81F6] to-[#9234EA] text-white shadow-sm hover:opacity-95 cursor-pointer'
+                                    >
+                                        Upgrade to Nexora Pro <ArrowRight className='w-3 h-3' />
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    )}
 
                     <p className='mt-6 text-sm font-medium'>Upload Resume</p>
                     <input
@@ -235,14 +299,24 @@ const ReviewResume = () => {
                     />
                     <p className='text-xs text-gray-500 font-light mt-1'>Supports PDF format (max 5MB)</p>
 
-                    <button type="submit" disabled={loading} className='w-full flex justify-center items-center gap-2 bg-gradient-to-r from-[#00B47D] to-[#008E9B] text-white px-4 py-3 mt-8 text-sm font-medium rounded-lg cursor-pointer hover:opacity-90 transition disabled:opacity-75 disabled:cursor-not-allowed'>
-                        {loading ? (
-                            <span className='w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin'></span>
-                        ) : (
-                            <FileText className='w-5 h-5' />
-                        )}
-                        Review Resume
-                    </button>
+                    {!isPremium ? (
+                        <button
+                            type='button'
+                            onClick={() => openCheckout()}
+                            className='w-full flex justify-center items-center gap-2 bg-gradient-to-r from-[#3C81F6] to-[#9234EA] text-white px-4 py-3 mt-8 text-sm font-medium rounded-lg cursor-pointer shadow hover:opacity-95 transition'
+                        >
+                            <Lock className='w-4 h-4' /> Upgrade to Nexora Pro to Review Resume
+                        </button>
+                    ) : (
+                        <button type="submit" disabled={loading} className='w-full flex justify-center items-center gap-2 bg-gradient-to-r from-[#00B47D] to-[#008E9B] text-white px-4 py-3 mt-8 text-sm font-medium rounded-lg cursor-pointer hover:opacity-90 transition disabled:opacity-75 disabled:cursor-not-allowed'>
+                            {loading ? (
+                                <span className='w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin'></span>
+                            ) : (
+                                <FileText className='w-5 h-5' />
+                            )}
+                            Review Resume
+                        </button>
+                    )}
                 </form>
 
                 {/* Saved Resumes List */}

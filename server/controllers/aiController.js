@@ -7,18 +7,19 @@ import axios from "axios";
 import fs from "fs";
 import { resumeReviewSchema, parseReviewResponse, reviewToMarkdown } from "../schemas/resumeReview.js";
 import { recordUsageIncrement, invalidateCommunityFeedCache } from "../services/userService.js";
+import { generateImageBuffer, removeBackgroundBuffer } from "../services/imageService.js";
+import { createGroqChatCompletion, extractCompletionText, DEFAULT_GROQ_MODEL, AI } from "../services/groqService.js";
 
-// Initialize OpenAI SDK pointed to Groq's endpoint
-const AI = new OpenAI({
-    apiKey: process.env.GROQ_API_KEY || 'placeholder_for_offline_init',
-    baseURL: "https://api.groq.com/openai/v1",
-});
-
-const GROQ_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+const GROQ_MODEL = DEFAULT_GROQ_MODEL;
 
 function getUserId(req) {
-    const authData = getAuth(req);
-    return authData?.userId || (typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId);
+    if (req.userId) return req.userId;
+    try {
+        const authData = getAuth(req);
+        return authData?.userId || (typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId);
+    } catch {
+        return typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId;
+    }
 }
 
 export const generateArticle = async (req, res) => {
@@ -39,14 +40,14 @@ export const generateArticle = async (req, res) => {
             });
         }
 
-        const response = await AI.chat.completions.create({
+        const response = await createGroqChatCompletion({
             model: GROQ_MODEL,
             messages: [{ role: "user", content: prompt }],
             temperature: 0.7,
             max_tokens: parseInt(length) || 500,
         });
 
-        const content = response.choices[0].message.content;
+        const content = extractCompletionText(response);
 
         await sql`
             INSERT INTO creations (user_id, prompt, content, type)
@@ -93,14 +94,20 @@ export const generateBlogTitle = async (req, res) => {
             });
         }
 
-        const response = await AI.chat.completions.create({
+        const response = await createGroqChatCompletion({
             model: GROQ_MODEL,
-            messages: [{ role: "user", content: prompt }],
+            messages: [
+                {
+                    role: "system",
+                    content: "You are an expert SEO copywriter. Generate exactly 5 distinct, catchy, high-converting blog titles. Return only the 5 titles as a numbered list (1 to 5), without introductory or concluding conversational text."
+                },
+                { role: "user", content: prompt }
+            ],
             temperature: 0.7,
-            max_tokens: 100,
+            max_tokens: 500,
         });
 
-        const content = response.choices[0].message.content;
+        const content = extractCompletionText(response);
 
         await sql`
             INSERT INTO creations (user_id, prompt, content, type)
@@ -139,51 +146,53 @@ export const generateImage = async (req, res) => {
         const { prompt, publish } = req.body;
         const plan = req.plan;
 
+        console.log(`[Diagnostic:Access] operation=generate_image userId=${userId} normalizedPlan=${plan} allowed=${plan === 'premium'}`);
+
         if (plan !== "premium") {
-            return res.json({
+            console.warn(`[Diagnostic:Access] operation=generate_image userId=${userId} normalizedPlan=${plan} HTTP_STATUS=403 message="This feature is only available for premium subscriptions"`);
+            return res.status(403).json({
                 success: false,
                 message: "This feature is only available for premium subscriptions",
             });
         }
 
-        if (!process.env.CLIPDROP_API_KEY) {
-            throw new Error(
-                "CLIPDROP_API_KEY is missing from the server environment."
-            );
+        if (!prompt || typeof prompt !== "string" || !prompt.trim()) {
+            return res.status(400).json({
+                success: false,
+                message: "A prompt is required for image generation.",
+            });
         }
 
-        const formData = new FormData();
-        formData.append("prompt", prompt);
+        const { buffer, mimeType } = await generateImageBuffer(prompt);
 
-        const { data } = await axios.post(
-            "https://clipdrop-api.co/text-to-image/v1",
-            formData,
-            {
-                headers: {
-                    "x-api-key": process.env.CLIPDROP_API_KEY,
-                },
-                responseType: "arraybuffer",
+        const base64Image = `data:${mimeType};base64,${buffer.toString("base64")}`;
+
+        let finalImageUrl = base64Image;
+
+        // Attempt Cloudinary upload; gracefully fallback to base64 data URI if Cloudinary upload fails (e.g. HTTP 403 missing permissions)
+        try {
+            const uploadResult = await cloudinary.uploader.upload(base64Image);
+            if (uploadResult?.secure_url) {
+                finalImageUrl = uploadResult.secure_url;
             }
-        );
-
-        const base64Image = `data:image/png;base64,${Buffer.from(
-            data
-        ).toString("base64")}`;
-
-        const { secure_url } = await cloudinary.uploader.upload(base64Image);
+        } catch (uploadError) {
+            const uploadHttpCode = uploadError.http_code || uploadError.status || uploadError.statusCode || 403;
+            console.warn(`[Diagnostic:Cloudinary] operation=generate_image_upload HTTP_STATUS=${uploadHttpCode} warning="Cloudinary upload rejected (${uploadError.message}), falling back to base64 data URI"`);
+            finalImageUrl = base64Image;
+        }
 
         await sql`
             INSERT INTO creations (user_id, prompt, content, type, publish)
-            VALUES (${userId}, ${prompt}, ${secure_url}, 'image', ${publish ?? false})
+            VALUES (${userId}, ${prompt}, ${finalImageUrl}, 'image', ${publish ?? false})
         `;
 
         if (publish) {
             await invalidateCommunityFeedCache();
         }
 
-        res.json({ success: true, content: secure_url });
+        res.json({ success: true, content: finalImageUrl });
     } catch (error) {
-        const externalStatus = error.response?.status;
+        const externalStatus = error.http_code || error.response?.status || error.status || error.statusCode || null;
 
         // Log the external service's response for diagnosis.
         let externalResponse = null;
@@ -206,25 +215,25 @@ export const generateImage = async (req, res) => {
             }
         }
 
-        console.error("Image Generation Error:", {
+        console.error("[Diagnostic:AIController] operation=generate_image error:", {
             message: error.message,
-            status: externalStatus ?? error.status ?? null,
+            status: externalStatus,
             response: externalResponse,
         });
 
         if (externalStatus === 429 || error.status === 429) {
             return res.status(429).json({
                 success: false,
-                message: "Rate limit reached. Please wait 30 seconds.",
+                message: error.message || "Rate limit reached. Please wait 30 seconds.",
             });
         }
 
+        const statusCode = (externalStatus >= 400 && externalStatus < 600) ? externalStatus : 500;
+
         // Return a safe diagnostic message without exposing API credentials.
-        res.status(500).json({
+        res.status(statusCode).json({
             success: false,
-            message: externalStatus
-                ? `External image API returned status ${externalStatus}. Check the backend terminal for details.`
-                : error.message || "Image generation failed.",
+            message: error.message || "Image generation failed.",
         });
     }
 };
@@ -239,11 +248,14 @@ export const removeImageBackground = async (req, res) => {
         const image = req.file;
         const plan = req.plan;
 
+        console.log(`[Diagnostic:Access] operation=remove_image_background userId=${userId} normalizedPlan=${plan} allowed=${plan === 'premium'}`);
+
         if (plan !== "premium") {
             if (image?.path && fs.existsSync(image.path)) {
                 fs.unlinkSync(image.path);
             }
-            return res.json({
+            console.warn(`[Diagnostic:Access] operation=remove_image_background userId=${userId} normalizedPlan=${plan} HTTP_STATUS=403 message="This feature is only available for premium subscriptions"`);
+            return res.status(403).json({
                 success: false,
                 message: "This feature is only available for premium subscriptions",
             });
@@ -256,14 +268,26 @@ export const removeImageBackground = async (req, res) => {
             });
         }
 
-        const { secure_url } = await cloudinary.uploader.upload(image.path, {
-            transformation: [
-                {
-                    effect: "background_removal",
-                    background_removal: "cloudinary_ai",
-                },
-            ],
-        });
+        let resultUrl = null;
+
+        // Try Cloudinary background removal; fall back to Clipdrop remove-background if Cloudinary fails (e.g. HTTP 403 create forbidden)
+        try {
+            const uploadResult = await cloudinary.uploader.upload(image.path, {
+                transformation: [
+                    {
+                        effect: "background_removal",
+                        background_removal: "cloudinary_ai",
+                    },
+                ],
+            });
+            resultUrl = uploadResult.secure_url;
+        } catch (cloudinaryError) {
+            const cloudStatus = cloudinaryError.http_code || cloudinaryError.status || cloudinaryError.statusCode || 403;
+            console.warn(`[Diagnostic:Cloudinary] operation=remove_image_background HTTP_STATUS=${cloudStatus} warning="Cloudinary background removal rejected (${cloudinaryError.message}), falling back to Clipdrop background removal"`);
+
+            const { buffer: bgRemovedBuffer, mimeType } = await removeBackgroundBuffer(image.path);
+            resultUrl = `data:${mimeType};base64,${bgRemovedBuffer.toString("base64")}`;
+        }
 
         if (image.path && fs.existsSync(image.path)) {
             fs.unlinkSync(image.path);
@@ -271,91 +295,24 @@ export const removeImageBackground = async (req, res) => {
 
         await sql`
             INSERT INTO creations (user_id, prompt, content, type)
-            VALUES (${userId}, 'Remove background from image', ${secure_url}, 'image')
+            VALUES (${userId}, 'Remove background from image', ${resultUrl}, 'image')
         `;
 
-        res.json({ success: true, content: secure_url });
+        res.json({ success: true, content: resultUrl });
     } catch (error) {
         if (req.file?.path && fs.existsSync(req.file.path)) {
             fs.unlinkSync(req.file.path);
         }
-        console.error("Background Removal Error:", error.message);
-
-        res.status(500).json({
-            success: false,
+        const externalStatus = error.http_code || error.response?.status || error.status || error.statusCode || null;
+        console.error("[Diagnostic:AIController] operation=remove_image_background error:", {
             message: error.message,
-        });
-    }
-};
-
-export const removeImageObject = async (req, res) => {
-    try {
-        const userId = getUserId(req);
-        if (!userId) {
-            return res.status(401).json({ success: false, message: "Unauthorized: User ID not found" });
-        }
-
-        // Fix field mismatch: accept 'object' from updated frontend or 'prompt' from legacy client
-        const object = req.body.object || req.body.prompt;
-        const image = req.file;
-        const plan = req.plan;
-
-        if (plan !== "premium") {
-            if (image?.path && fs.existsSync(image.path)) {
-                fs.unlinkSync(image.path);
-            }
-            return res.json({
-                success: false,
-                message: "This feature is only available for premium subscriptions",
-            });
-        }
-
-        if (!image) {
-            return res.status(400).json({
-                success: false,
-                message: "No image file was uploaded.",
-            });
-        }
-
-        if (!object || !String(object).trim()) {
-            if (image.path && fs.existsSync(image.path)) {
-                fs.unlinkSync(image.path);
-            }
-            return res.status(400).json({
-                success: false,
-                message: "Please describe the object you want to remove.",
-            });
-        }
-
-        const { public_id } = await cloudinary.uploader.upload(image.path);
-
-        if (image.path && fs.existsSync(image.path)) {
-            fs.unlinkSync(image.path);
-        }
-
-        const cleanObject = String(object).trim();
-        const imageUrl = cloudinary.url(public_id, {
-            transformation: [{ effect: `gen_remove:${cleanObject}` }],
-            resource_type: "image",
+            status: externalStatus,
         });
 
-        const promptMessage = `Remove ${cleanObject} from image`;
-
-        await sql`
-            INSERT INTO creations (user_id, prompt, content, type)
-            VALUES (${userId}, ${promptMessage}, ${imageUrl}, 'image')
-        `;
-
-        res.json({ success: true, content: imageUrl });
-    } catch (error) {
-        if (req.file?.path && fs.existsSync(req.file.path)) {
-            fs.unlinkSync(req.file.path);
-        }
-        console.error("Object Removal Error:", error.message);
-
-        res.status(500).json({
+        const statusCode = (externalStatus >= 400 && externalStatus < 600) ? externalStatus : 500;
+        res.status(statusCode).json({
             success: false,
-            message: error.message,
+            message: error.message || "Background removal failed.",
         });
     }
 };
@@ -372,7 +329,7 @@ export const resumeReview = async (req, res) => {
         const plan = req.plan;
 
         if (plan !== "premium") {
-            return res.json({
+            return res.status(403).json({
                 success: false,
                 message: "This feature is only available for premium subscriptions",
             });
@@ -438,14 +395,14 @@ ${extractedText}`;
         // Attempt up to 2 tries for valid structured JSON
         for (let attempt = 0; attempt < 2; attempt++) {
             try {
-                const response = await AI.chat.completions.create({
+                const response = await createGroqChatCompletion({
                     model: GROQ_MODEL,
                     messages: [{ role: "user", content: structuredPrompt }],
                     temperature: attempt === 0 ? 0.5 : 0.3,
                     max_tokens: 1500,
                 });
 
-                const rawContent = response.choices[0].message.content;
+                const rawContent = extractCompletionText(response);
                 const parsed = parseReviewResponse(rawContent);
 
                 if (!parsed) {

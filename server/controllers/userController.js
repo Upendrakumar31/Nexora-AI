@@ -1,25 +1,37 @@
 import sql from "../configs/db.js";
 import { getAuth } from "@clerk/express";
-import { getCachedPublishedCreations, invalidateCommunityFeedCache } from "../services/userService.js";
+import { getCachedPublishedCreations, invalidateCommunityFeedCache, getUserMetadata, invalidateUserCache } from "../services/userService.js";
 
 function getUserId(req) {
-    const authData = getAuth(req);
-    return authData?.userId || (typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId);
+    if (req.userId) return req.userId;
+    try {
+        const authData = getAuth(req);
+        return authData?.userId || (typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId);
+    } catch {
+        return typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId;
+    }
 }
 
-export const getUserCreations = async (req, res) => {
+export const getUserCreations = async (req, res, customSql = sql) => {
     try {
         const userId = getUserId(req);
         if (!userId) {
             return res.status(401).json({ success: false, message: "Unauthorized: User ID not found" });
         }
 
-        const creations = await sql`SELECT * FROM creations WHERE user_id = ${userId} ORDER BY created_at DESC`;
-        res.json({ success: true, creations });
+        // In Express, route handlers receive (req, res, next). Ensure we don't treat Express's next callback as a SQL tagged template function.
+        const db = (customSql && typeof customSql === 'function' && customSql.name !== 'next')
+            ? customSql
+            : sql;
+
+        const creations = await db`SELECT * FROM creations WHERE user_id = ${userId} ORDER BY created_at DESC`;
+        if (res.headersSent) return;
+        return res.json({ success: true, creations: creations || [] });
 
     } catch (error) {
         console.error("getUserCreations error:", error.message);
-        res.status(500).json({ success: false, message: error.message });
+        if (res.headersSent) return;
+        return res.status(500).json({ success: false, message: error.message });
     }
 };
 
@@ -79,5 +91,30 @@ export const toggleLikeCreation = async (req, res) => {
     } catch (error) {
         console.error("toggleLikeCreation error:", error.message);
         res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+export const syncSubscription = async (req, res) => {
+    try {
+        const userId = getUserId(req);
+        if (!userId) {
+            return res.status(401).json({ success: false, message: "Unauthorized: User ID not found" });
+        }
+
+        // Invalidate Redis cache to guarantee fresh fetch from Clerk Billing
+        await invalidateUserCache(userId);
+
+        // Fetch fresh metadata and subscription status directly from Clerk
+        const metadata = await getUserMetadata(userId);
+
+        return res.json({
+            success: true,
+            plan: metadata.plan,
+            free_usage: metadata.free_usage,
+            subscription: metadata.subscription,
+        });
+    } catch (error) {
+        console.error("syncSubscription error:", error.message);
+        return res.status(500).json({ success: false, message: error.message });
     }
 };

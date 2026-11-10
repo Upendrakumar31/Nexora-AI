@@ -1,4 +1,4 @@
-import { describe, it } from 'node:test';
+import { describe, it, after } from 'node:test';
 import assert from 'node:assert/strict';
 import {
     getUserCacheKey,
@@ -10,9 +10,15 @@ import {
     recordUsageIncrement,
     invalidateUserCache,
 } from '../services/userService.js';
-import { cacheGet, cacheSet, cacheDel } from '../configs/redis.js';
+import { cacheGet, cacheSet, cacheDel, getRedisClient } from '../configs/redis.js';
 
 describe('Redis Cloud Caching & Quota Safety', () => {
+    after(() => {
+        const client = getRedisClient();
+        if (client) {
+            client.disconnect();
+        }
+    });
     it('generates correct, isolated user-scoped cache keys', () => {
         const key1 = getUserCacheKey('user_123');
         const key2 = getUserCacheKey('user_456');

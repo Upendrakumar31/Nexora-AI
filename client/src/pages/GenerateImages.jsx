@@ -1,11 +1,11 @@
 import React, { useState } from 'react';
-import { Sparkles, Image as ImageIcon } from 'lucide-react'; 
+import { Sparkles, Image as ImageIcon, Gem, Lock, ArrowRight, ShieldAlert } from 'lucide-react'; 
 import api from '../services/api';
-import { useAuth } from '@clerk/react';
 import toast from 'react-hot-toast';
+import { useSubscriptionPlan } from '../hooks/useSubscriptionPlan';
+import { isSubscriptionEntitlementError } from '../utils/subscriptionUtils';
 
 const GenerateImages = () => {
-
     const styles = [
         'Realistic', 
         'Ghibli Style', 
@@ -14,40 +14,53 @@ const GenerateImages = () => {
         'Fantasy style',
         'Realistic style',
         '3D style',
-        'Portrait style' // Fixed typo from 'Potrait'
+        'Portrait style'
     ];
 
     const [input, setInput] = useState('');
     const [selectedStyle, setSelectedStyle] = useState('Realistic');
     const [publish, setPublish] = useState(false);
-    
-    // Added state for loading and storing the returned image URL
     const [loading, setLoading] = useState(false);
     const [content, setContent] = useState('');
 
-    const { getToken } = useAuth();
+    const { isPremium, openCheckout } = useSubscriptionPlan();
 
     const onSubmitHandler = async (e) => {
         e.preventDefault();
+
+        // Frontend gating check
+        if (!isPremium) {
+            toast('AI Image Generation requires Nexora Pro.', {
+                icon: '🔒',
+                duration: 4000,
+            });
+            openCheckout();
+            return;
+        }
+
         try {
             setLoading(true);
-            // Combine user input with the selected style for a better prompt
             const prompt = `${input}, generated in a detailed ${selectedStyle}`;
             
-            // Call your backend generateImage controller
             const { data } = await api.post('/api/ai/generate-image', 
                 { prompt, publish }
             );
         
             if (data.success) {
-                // The backend returns the secure_url from Cloudinary
                 setContent(data.content);
                 toast.success('Image generated successfully!');
             } else {
-                toast.error(data.message); 
+                toast.error(data.message);
+                if (isSubscriptionEntitlementError(data.message)) {
+                    openCheckout();
+                }
             }
         } catch (error) {
-            toast.error(error.message);
+            const errorMsg = error.response?.data?.message || error.message;
+            toast.error(errorMsg);
+            if (isSubscriptionEntitlementError(error)) {
+                openCheckout();
+            }
         } finally {
             setLoading(false); 
         }
@@ -58,10 +71,39 @@ const GenerateImages = () => {
             
             <form onSubmit={onSubmitHandler} className='w-full max-w-lg p-6 bg-white rounded-lg border border-gray-200'>
                 
-                <div className='flex items-center gap-3'>
-                    <Sparkles className='w-6 text-[#00AD25]' />
-                    <h1 className='text-xl font-semibold'>AI Image Generator</h1>
+                <div className='flex items-center justify-between'>
+                    <div className='flex items-center gap-3'>
+                        <Sparkles className='w-6 text-[#00AD25]' />
+                        <h1 className='text-xl font-semibold'>AI Image Generator</h1>
+                    </div>
+                    <span className='inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-semibold bg-purple-50 text-[#9234EA] border border-purple-200'>
+                        <Gem className='w-3 h-3' /> Pro Feature
+                    </span>
                 </div>
+
+                {/* Free plan upgrade banner */}
+                {!isPremium && (
+                    <div className='mt-4 p-4 rounded-xl bg-gradient-to-r from-purple-50 to-blue-50 border border-purple-200 text-slate-700'>
+                        <div className='flex items-start gap-3'>
+                            <div className='w-8 h-8 rounded-lg bg-[#9234EA]/10 text-[#9234EA] flex items-center justify-center shrink-0 mt-0.5'>
+                                <Lock className='w-4 h-4' />
+                            </div>
+                            <div className='flex-1'>
+                                <h2 className='text-sm font-semibold text-slate-900'>Nexora Pro Required</h2>
+                                <p className='text-xs text-gray-600 mt-1 leading-relaxed'>
+                                    Text-to-image generation is powered by Clipdrop. Subscribe to Nexora Pro ($19/mo) to unlock.
+                                </p>
+                                <button
+                                    type='button'
+                                    onClick={() => openCheckout()}
+                                    className='mt-3 inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-gradient-to-r from-[#3C81F6] to-[#9234EA] text-white shadow-sm hover:opacity-95 cursor-pointer'
+                                >
+                                    Upgrade to Nexora Pro <ArrowRight className='w-3 h-3' />
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 <p className='mt-6 text-sm font-medium'>Describe your Image</p>
                 <textarea 
@@ -99,13 +141,24 @@ const GenerateImages = () => {
                   <p className='text-sm'>Make this image public</p>
                 </div>
 
-                <button disabled={loading} className='w-full flex justify-center items-center gap-2 bg-gradient-to-r from-[#00AD25] to-[#04FF50] text-white px-4 py-3 mt-8 text-sm font-medium rounded-lg cursor-pointer hover:bg-[#0999bc] transition disabled:opacity-75 disabled:cursor-not-allowed'>
+                <button 
+                    type='submit'
+                    disabled={loading} 
+                    className='w-full flex justify-center items-center gap-2 bg-gradient-to-r from-[#00AD25] to-[#04FF50] text-white px-4 py-3 mt-8 text-sm font-medium rounded-lg cursor-pointer hover:bg-[#0999bc] transition disabled:opacity-75 disabled:cursor-not-allowed'
+                >
                     {loading ? (
                         <span className='w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin'></span>
+                    ) : !isPremium ? (
+                        <>
+                            <Lock className='w-4 h-4' />
+                            Unlock with Nexora Pro
+                        </>
                     ) : (
-                        <ImageIcon className='w-5 h-5' />
+                        <>
+                            <ImageIcon className='w-5 h-5' />
+                            Generate image
+                        </>
                     )}
-                    Generate image
                 </button>
             </form>
 
@@ -119,7 +172,11 @@ const GenerateImages = () => {
                     <div className='flex-1 flex justify-center items-center'>
                         <div className='text-sm flex flex-col items-center gap-5 text-gray-400'>
                             <ImageIcon className='w-16 h-16 opacity-50' />
-                            <p className='text-sm max-w-xs text-center leading-relaxed'>Describe an image and click "Generate image" to get started</p>
+                            <p className='text-sm max-w-xs text-center leading-relaxed'>
+                                {isPremium 
+                                    ? 'Describe an image and click "Generate image" to get started'
+                                    : 'Upgrade to Nexora Pro to generate high-resolution AI images'}
+                            </p>
                         </div>
                     </div>
                 ) : (

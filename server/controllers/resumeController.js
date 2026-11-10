@@ -2,18 +2,18 @@ import OpenAI from 'openai';
 import { getAuth } from '@clerk/express';
 import sql from '../configs/db.js';
 import { processAndStoreChunks, retrieveRelevantChunks, buildContext } from '../services/ragService.js';
+import { createGroqChatCompletion, extractCompletionText, DEFAULT_GROQ_MODEL, AI } from '../services/groqService.js';
 
-// Reuse Groq client for chat completions
-const AI = new OpenAI({
-    apiKey: process.env.GROQ_API_KEY || 'placeholder_for_offline_init',
-    baseURL: 'https://api.groq.com/openai/v1',
-});
-
-const GROQ_MODEL = process.env.GROQ_MODEL || 'openai/gpt-oss-120b';
+const GROQ_MODEL = DEFAULT_GROQ_MODEL;
 
 function getUserId(req) {
-    const authData = getAuth(req);
-    return authData?.userId || (typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId);
+    if (req.userId) return req.userId;
+    try {
+        const authData = getAuth(req);
+        return authData?.userId || (typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId);
+    } catch {
+        return typeof req.auth === 'function' ? req.auth()?.userId : req.auth?.userId;
+    }
 }
 
 /** Maximum recent chat messages to include in context */
@@ -252,14 +252,14 @@ export const sendChatMessage = async (req, res) => {
         chatMessages.push({ role: 'user', content: message.trim() });
 
         // Call Groq LLM with temperature 0.2 for strict grounding
-        const response = await AI.chat.completions.create({
+        const response = await createGroqChatCompletion({
             model: GROQ_MODEL,
             messages: chatMessages,
             temperature: 0.2,
             max_tokens: 1000,
         });
 
-        const assistantContent = response.choices[0].message.content;
+        const assistantContent = extractCompletionText(response);
 
         // Persist both messages
         await sql`
